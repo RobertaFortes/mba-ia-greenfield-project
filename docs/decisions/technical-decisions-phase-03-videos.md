@@ -56,6 +56,7 @@ _Subprojects in scope:_
 **Recommendation:** **Option A (BullMQ + Redis)** — it gives retry/backoff and a final-failure hook out of the box with an official NestJS module, matching the "fila real subindo no Compose" requirement with the least custom code; pg-boss would hide the queue inside the database and RabbitMQ would force us to hand-build retry topology for no routing benefit.
 
 **Decision:** A (BullMQ + Redis)
+**Libraries:** `@nestjs/bullmq@^12.x`, `bullmq@^6.x`
 
 ---
 
@@ -102,6 +103,7 @@ _Subprojects in scope:_
 **Bucket and key layout (part of this decision):** one bucket (`S3_BUCKET`, default `streamtube`), created idempotently on API/worker startup; keys `videos/{videoId}/original.{ext}` and `videos/{videoId}/thumbnail.jpg` (`videoId` = internal UUID, never the public id). The bucket is private; nothing is served without a presigned URL.
 
 **Decision:** B (RustFS pinned tag) + AWS SDK v3 with the checksum settings, two endpoints, single private bucket with the key layout above.
+**Libraries:** `@aws-sdk/client-s3@^3.x`, `@aws-sdk/s3-request-presigner@^3.x`
 
 ---
 
@@ -281,6 +283,54 @@ _Subprojects in scope:_
 
 ---
 
+## TD-08: Environment Variable Contract for Storage, Queue and Video Limits
+
+**Scope:** Repo-wide
+
+**Capability:** Transversal — covers: "Serviço de armazenamento de arquivos (vídeos e thumbnails)", "Serviço de processamento em segundo plano (filas)", "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance"
+
+**Context:** The phase adds three new infrastructure services (storage, queue, worker) and several tunable limits. Each key is cited by at least three files that must stay consistent — the Joi schema (`env.validation.ts`), `.env.example`/`compose.yaml` and the `registerAs` config namespaces — so the canonical set of keys, which are required and which have defaults, is a cross-component contract (raised as MD-1 by `plan-validate`). It builds on the inherited config approach (`@nestjs/config` + Joi + namespaced `registerAs`); it does not reopen it.
+
+**Options:**
+
+### Option A: Three namespaced configs (`storage`, `queue`, `video`) with required credentials and Compose-friendly defaults
+- `S3_ACCESS_KEY` and `S3_SECRET_KEY` are **required** (no default); every other key has a default that points to Compose service names. The same variables feed the storage server container in `compose.yaml`, so credentials are defined once.
+- **Pros:** Fails fast when credentials are missing; consistent with the phase-01/02 pattern (one file per domain); values are documented in one place (`.env.example`); the worker reuses the same namespaces.
+- **Cons:** Three more config files and a longer Joi schema.
+
+### Option B: Reuse the standard AWS variable names (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) read implicitly by the SDK
+- **Pros:** Works with production S3 and the SDK default credential chain with no code.
+- **Cons:** Configuration is implicit (not validated by Joi), mixes with real AWS credentials of a developer machine, and the endpoint/bucket keys would still need custom names — two conventions for one service.
+
+### Option C: A single `videos` config with defaults for everything, including credentials
+- **Pros:** Smallest amount of files; nothing to configure to boot.
+- **Cons:** Default credentials in code are a security smell that tends to leak into production; mixes storage, queue and product limits in one namespace.
+
+**Recommendation:** **Option A** — explicit, validated configuration in the same shape as the existing namespaces, with required credentials so a missing secret fails at boot instead of at first upload.
+
+**Canonical keys (part of this decision):**
+
+| Namespace | Key | Rule | Default |
+|---|---|---|---|
+| `storage` | `S3_ENDPOINT` | uri | `http://storage:9000` (service host) |
+| `storage` | `S3_PUBLIC_ENDPOINT` | uri | `http://localhost:9000` (client-facing host used only to sign URLs) |
+| `storage` | `S3_REGION` | string | `us-east-1` |
+| `storage` | `S3_BUCKET` | string | `streamtube` |
+| `storage` | `S3_ACCESS_KEY` | string | **required** |
+| `storage` | `S3_SECRET_KEY` | string | **required** |
+| `queue` | `REDIS_HOST` | string | `redis` |
+| `queue` | `REDIS_PORT` | port | `6379` |
+| `video` | `VIDEO_UPLOAD_PART_SIZE_BYTES` | number ≥ 5MiB | `134217728` (128MiB) |
+| `video` | `VIDEO_UPLOAD_URL_EXPIRATION_SECONDS` | number | `3600` |
+| `video` | `VIDEO_PLAYBACK_URL_EXPIRATION_SECONDS` | number | `300` |
+| `video` | `VIDEO_PROCESSING_TIMEOUT_SECONDS` | number | `1800` |
+
+The 10GiB size limit, the queue name and the job attempts/backoff are product/engineering constants defined in code (not environment). `.env.example` and `compose.yaml` carry development-only credential values.
+
+**Decision:** A (three namespaced configs, required credentials, defaults on service names)
+
+---
+
 ## Decisions Summary
 
 | ID | Scope | Decision | Recommendation | Choice |
@@ -292,3 +342,4 @@ _Subprojects in scope:_
 | TD-05 | Cross-layer | Unique Public URL Identifier | 11-char base64url id + unique index | A |
 | TD-06 | Cross-layer | Streaming and Download Delivery | 302 to presigned GET (public stream, authenticated download) | A |
 | TD-07 | Backend | Video Status Lifecycle and Failure Handling | `draft → processing → ready \| failed`, retries in queue | A |
+| TD-08 | Repo-wide | Environment Variable Contract for Storage, Queue and Video Limits | Three namespaced configs, required credentials | A |
