@@ -104,6 +104,8 @@ _Subprojects in scope:_
 
 **Decision:** B (RustFS pinned tag) + AWS SDK v3 with the checksum settings, two endpoints, single private bucket with the key layout above.
 **Libraries:** `@aws-sdk/client-s3@^3.x`, `@aws-sdk/s3-request-presigner@^3.x`
+**Revisions:**
+- 2026-09-30 — `S3_PUBLIC_ENDPOINT` is recorded as the single, explicit exception to the 'Compose service name, never `localhost`' rule: it is a client-facing URL used only to sign presigned URLs, while every service-to-service connection keeps `S3_ENDPOINT` (`http://storage:9000`). Rationale: presigned signatures embed the host the client will call, and a browser cannot resolve Compose service names (validation ICC-1).
 
 ---
 
@@ -143,6 +145,9 @@ _Subprojects in scope:_
 - **Authorization:** only the authenticated owner of the channel can init/resume/complete/abort.
 
 **Decision:** A (presigned multipart, direct to storage) with the contract above.
+**Revisions:**
+- 2026-09-30 — Init payload defined: required `filename`, `contentType` and `sizeBytes`; optional `title`, defaulting to the filename without extension (truncated to the column length). Rationale: the draft is pre-registered automatically when the upload starts and title editing belongs to Fase 04 (validation AMB-1).
+- 2026-09-30 — Ownership resolves through the caller's channel: `ChannelsService.findByUserId(userId)` is added (Fase 02 delivered only `createChannel`); the video stores `channel_id` and every owner-only operation compares it with the caller's channel. Rationale: `JwtPayload.sub` is a user id while videos belong to channels (validation DG-1).
 
 ---
 
@@ -245,6 +250,9 @@ _Subprojects in scope:_
 - Presigned GET expiry: `VIDEO_PLAYBACK_URL_EXPIRATION_SECONDS` (default 300).
 
 **Decision:** A (redirect to presigned GET) with the access rules above.
+**Revisions:**
+- 2026-09-30 — Owner exception removed: `stream` redirects only for videos in status `ready`; any other status returns `404` to everyone. Rationale: the route is `@Public()`, so it has no authenticated principal, and no capability of the phase asks for previewing an unprocessed video (validation IC-1).
+- 2026-09-30 — Throttle policy for the videos module: the global `ThrottlerGuard` (10 req/60s per IP, registered as `APP_GUARD` in `AuthModule`) stays; `stream` and `download` use `@SkipThrottle()` (the API only redirects, storage serves the bytes) and init / resume-info / complete / abort use an explicit `@Throttle({ default: { limit: 60, ttl: 60000 } })`. Rationale: a 10GiB upload legitimately refreshes part URLs many times and the inherited 10 req/min ceiling is a global side effect, not a per-domain policy (validation ICC-2).
 
 ---
 
@@ -280,6 +288,8 @@ _Subprojects in scope:_
 - **Abandoned drafts:** `abort` deletes the draft and aborts the multipart upload; automatic cleanup of stale drafts is out of scope for this phase.
 
 **Decision:** A (`draft → processing → ready | failed`, retries in queue, failure persisted, compensation on enqueue error).
+**Revisions:**
+- 2026-09-30 — Reprocess removed: `failed` is terminal in this phase (the user uploads again); the transition `failed → processing` and any reprocess endpoint are out of scope. Rationale: no capability of the phase asks for reprocessing and TD-03 defines no endpoint for it (validation IC-2).
 
 ---
 

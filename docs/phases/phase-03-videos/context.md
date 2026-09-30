@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-09-30T17:05:40+0200"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-30T17:17:17+0200"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-30T17:22:54+0200"
   docs/decisions/technical-decisions-phase-02-auth.md: "2026-09-30T17:06:00+0200"
   docs/decisions/technical-decisions-phase-01-configuracao-base.md: "2026-09-30T17:06:00+0200"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-09-30T17:06:00+0200"
@@ -50,13 +50,14 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Message Queue Technology | decided | A (BullMQ + Redis) | — |
-| phase-03-videos/TD-02 | technical-decisions-phase-03-videos.md | Backend | Object Storage Runtime, Client and Key Layout | decided | B (RustFS pinned tag + AWS SDK v3) | — |
+| phase-03-videos/TD-01 | technical-decisions-phase-03-videos.md | Backend | Message Queue Technology | decided | A (BullMQ + Redis) | `@nestjs/bullmq@^12.x`, `bullmq@^6.x` |
+| phase-03-videos/TD-02 | technical-decisions-phase-03-videos.md | Backend | Object Storage Runtime, Client and Key Layout | decided | B (RustFS pinned tag + AWS SDK v3) | `@aws-sdk/client-s3@^3.x`, `@aws-sdk/s3-request-presigner@^3.x` |
 | phase-03-videos/TD-03 | technical-decisions-phase-03-videos.md | Cross-layer | Upload Strategy for Files up to 10GB | decided | A (presigned S3 multipart) | — |
 | phase-03-videos/TD-04 | technical-decisions-phase-03-videos.md | Backend | Video Processing Worker and FFmpeg Execution | decided | A (same codebase, separate container, `spawn` over presigned URLs) | — |
 | phase-03-videos/TD-05 | technical-decisions-phase-03-videos.md | Cross-layer | Unique Public URL Identifier | decided | A (11-char base64url + unique index) | — |
 | phase-03-videos/TD-06 | technical-decisions-phase-03-videos.md | Cross-layer | Streaming and Download Delivery | decided | A (302 to presigned GET) | — |
 | phase-03-videos/TD-07 | technical-decisions-phase-03-videos.md | Backend | Video Status Lifecycle and Failure Handling | decided | A (`draft → processing → ready \| failed`) | — |
+| phase-03-videos/TD-08 | technical-decisions-phase-03-videos.md | Repo-wide | Environment Variable Contract for Storage, Queue and Video Limits | decided | A (three namespaced configs, required credentials, defaults on service names) | — |
 
 _Source files:_
 
@@ -66,9 +67,9 @@ _Source files:_
 
 | Capability | Covered by |
 |------------|------------|
-| Serviço de armazenamento de arquivos (vídeos e thumbnails) | phase-03-videos/TD-02 |
-| Serviço de processamento em segundo plano (filas) | phase-03-videos/TD-01, phase-03-videos/TD-04, phase-03-videos/TD-07 |
-| Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance | phase-03-videos/TD-03 |
+| Serviço de armazenamento de arquivos (vídeos e thumbnails) | phase-03-videos/TD-02, phase-03-videos/TD-08 |
+| Serviço de processamento em segundo plano (filas) | phase-03-videos/TD-01, phase-03-videos/TD-04, phase-03-videos/TD-07, phase-03-videos/TD-08 |
+| Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance | phase-03-videos/TD-03, phase-03-videos/TD-08 |
 | Pré-cadastro automático do vídeo como rascunho ao iniciar o upload | phase-03-videos/TD-03, phase-03-videos/TD-07 |
 | Processamento automático do vídeo após upload (extração de duração e metadados) | phase-03-videos/TD-04, phase-03-videos/TD-07 |
 | Geração automática de thumbnail a partir de um frame do vídeo | phase-03-videos/TD-04 |
@@ -82,19 +83,26 @@ _Source files:_
 
 **Recommendation:** BullMQ + Redis — it gives retry/backoff and a final-failure hook out of the box with an official NestJS module (`@nestjs/bullmq`), matching the "fila real subindo no Compose" requirement with the least custom code; pg-boss would hide the queue inside the database and RabbitMQ would force hand-built retry topology for no routing benefit.
 
-**Libraries:** —
+**Libraries:** `@nestjs/bullmq@^12.x`, `bullmq@^6.x`
 
 ### phase-03-videos/TD-02
 
 **Recommendation:** RustFS with a pinned tag for the Compose `storage` service (MinIO's official images are no longer published — pulls fail; the frozen legacy copy is a verified fallback). The code talks only to the S3 API through AWS SDK v3 (`forcePathStyle: true`, `requestChecksumCalculation: 'WHEN_REQUIRED'`, `responseChecksumValidation: 'WHEN_REQUIRED'`), with two endpoints (`S3_ENDPOINT` for services, `S3_PUBLIC_ENDPOINT` only to sign client-facing URLs), one private bucket and keys `videos/{videoId}/original.{ext}` and `videos/{videoId}/thumbnail.jpg`.
 
-**Libraries:** —
+**Libraries:** `@aws-sdk/client-s3@^3.x`, `@aws-sdk/s3-request-presigner@^3.x`
+
+**Revisions:**
+- 2026-09-30 — `S3_PUBLIC_ENDPOINT` is recorded as the single, explicit exception to the 'Compose service name, never `localhost`' rule: it is a client-facing URL used only to sign presigned URLs, while every service-to-service connection keeps `S3_ENDPOINT` (`http://storage:9000`). Rationale: presigned signatures embed the host the client will call, and a browser cannot resolve Compose service names (validation ICC-1).
 
 ### phase-03-videos/TD-03
 
 **Recommendation:** Presigned S3 multipart upload straight to storage — the only option where the 10GB never touches the API and resume is native (`ListParts`). Contract: limit 10GiB validated at init and re-verified with `HeadObject` on complete; part size `max(VIDEO_UPLOAD_PART_SIZE_BYTES, ceil(size/10000))` (default 128MiB); draft row created at init with the `uploadId`; endpoints init / resume-info / complete / abort; accepted types `video/mp4`, `video/webm`, `video/quicktime`, `video/x-matroska`; only the channel owner can operate.
 
 **Libraries:** —
+
+**Revisions:**
+- 2026-09-30 — Init payload defined: required `filename`, `contentType` and `sizeBytes`; optional `title`, defaulting to the filename without extension (truncated to the column length). Rationale: the draft is pre-registered automatically when the upload starts and title editing belongs to Fase 04 (validation AMB-1).
+- 2026-09-30 — Ownership resolves through the caller's channel: `ChannelsService.findByUserId(userId)` is added (Fase 02 delivered only `createChannel`); the video stores `channel_id` and every owner-only operation compares it with the caller's channel. Rationale: `JwtPayload.sub` is a user id while videos belong to channels (validation DG-1).
 
 ### phase-03-videos/TD-04
 
@@ -110,13 +118,26 @@ _Source files:_
 
 ### phase-03-videos/TD-06
 
-**Recommendation:** API endpoints that authorize and redirect (302) to short-lived presigned GET URLs — the API decides who may fetch, storage serves the bytes with native range/206 support, matching the target architecture (frontend streams from storage). Access rules: `stream` is public and only for `ready` videos (404 otherwise, owner may stream own `processing` video); `download` requires authentication and `ready` status; presigned GET expiry `VIDEO_PLAYBACK_URL_EXPIRATION_SECONDS` (default 300).
+**Recommendation:** API endpoints that authorize and redirect (302) to short-lived presigned GET URLs — the API decides who may fetch, storage serves the bytes with native range/206 support, matching the target architecture (frontend streams from storage). Access rules: `stream` is public and only for `ready` videos (404 otherwise); `download` requires authentication and `ready` status; presigned GET expiry `VIDEO_PLAYBACK_URL_EXPIRATION_SECONDS` (default 300).
 
 **Libraries:** —
+
+**Revisions:**
+- 2026-09-30 — Owner exception removed: `stream` redirects only for videos in status `ready`; any other status returns `404` to everyone. Rationale: the route is `@Public()`, so it has no authenticated principal, and no capability of the phase asks for previewing an unprocessed video (validation IC-1).
+- 2026-09-30 — Throttle policy for the videos module: the global `ThrottlerGuard` (10 req/60s per IP, registered as `APP_GUARD` in `AuthModule`) stays; `stream` and `download` use `@SkipThrottle()` (the API only redirects, storage serves the bytes) and init / resume-info / complete / abort use an explicit `@Throttle({ default: { limit: 60, ttl: 60000 } })`. Rationale: a 10GiB upload legitimately refreshes part URLs many times and the inherited 10 req/min ceiling is a global side effect, not a per-domain policy (validation ICC-2).
 
 ### phase-03-videos/TD-07
 
 **Recommendation:** `draft → processing → ready | failed`, retries in the queue (`attempts: 3`, exponential backoff 5s), failure persisted by the worker on the final attempt with `processingError`. Transitions: `draft → processing` (complete), `processing → ready`, `processing → failed`, `failed → processing` (reprocess), abort deletes a draft. Enqueue happens after the DB commit; if it fails the API sets `failed` (`ENQUEUE_FAILED`) and answers 503. The processor is idempotent (skips if already `ready`).
+
+**Libraries:** —
+
+**Revisions:**
+- 2026-09-30 — Reprocess removed: `failed` is terminal in this phase (the user uploads again); the transition `failed → processing` and any reprocess endpoint are out of scope. Rationale: no capability of the phase asks for reprocessing and TD-03 defines no endpoint for it (validation IC-2).
+
+### phase-03-videos/TD-08
+
+**Recommendation:** **Option A** — explicit, validated configuration in the same shape as the existing namespaces, with required credentials so a missing secret fails at boot instead of at first upload. Namespaces `storage` (`S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY` and `S3_SECRET_KEY` required), `queue` (`REDIS_HOST`, `REDIS_PORT`) and `video` (`VIDEO_UPLOAD_PART_SIZE_BYTES`, `VIDEO_UPLOAD_URL_EXPIRATION_SECONDS`, `VIDEO_PLAYBACK_URL_EXPIRATION_SECONDS`, `VIDEO_PROCESSING_TIMEOUT_SECONDS`); the 10GiB limit, queue name and job attempts/backoff are code constants.
 
 **Libraries:** —
 
