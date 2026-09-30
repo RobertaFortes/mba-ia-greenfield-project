@@ -3,7 +3,8 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-09-30T17:05:40+0200"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-30T17:22:54+0200"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-30T17:28:51+0200"
+  docs/phases/phase-03-videos/library-refs.md: "2026-09-30T17:23:56+0200"
   docs/decisions/technical-decisions-phase-02-auth.md: "2026-09-30T17:06:00+0200"
   docs/decisions/technical-decisions-phase-01-configuracao-base.md: "2026-09-30T17:06:00+0200"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-09-30T17:06:00+0200"
@@ -125,6 +126,7 @@ _Source files:_
 **Revisions:**
 - 2026-09-30 — Owner exception removed: `stream` redirects only for videos in status `ready`; any other status returns `404` to everyone. Rationale: the route is `@Public()`, so it has no authenticated principal, and no capability of the phase asks for previewing an unprocessed video (validation IC-1).
 - 2026-09-30 — Throttle policy for the videos module: the global `ThrottlerGuard` (10 req/60s per IP, registered as `APP_GUARD` in `AuthModule`) stays; `stream` and `download` use `@SkipThrottle()` (the API only redirects, storage serves the bytes) and init / resume-info / complete / abort use an explicit `@Throttle({ default: { limit: 60, ttl: 60000 } })`. Rationale: a 10GiB upload legitimately refreshes part URLs many times and the inherited 10 req/min ceiling is a global side effect, not a per-domain policy (validation ICC-2).
+- 2026-09-30 — The public metadata endpoint `GET /videos/:publicId` also uses `@SkipThrottle()` (read-only, one call per page view, no state change), completing the throttle policy of the videos module. Rationale: the inherited global ceiling of 10 req/60s per IP would throttle anonymous readers of a public endpoint; found while slicing the plan into Step Implementations.
 
 ### phase-03-videos/TD-07
 
@@ -216,6 +218,7 @@ _Source files:_
 - Endpoints are protected by the global `JwtAuthGuard`; `@Public()` opts out; `@CurrentUser()` returns `JwtPayload { sub: userId, email }`. The channel of a user is the 1:1 `Channel` (`channels.user_id`). _(from phase 02)_
 - Controllers are documented with `@nestjs/swagger` (`@ApiTags`, `@ApiOperation`, `@ApiResponse` with `ApiErrorEnvelope` for errors) and `nestjs-project/openapi.json` is re-exported when the API surface changes. _(from phase 02 / openapi-docs-nestjs)_
 - Test suffixes: `*.spec.ts` (unit, no I/O), `*.integration-spec.ts` (real DB/services), `*.e2e-spec.ts` in `test/` (supertest); integration and e2e run `--runInBand`. Every command runs inside the `nestjs-api` container; service hosts are Compose service names, never `localhost`. _(from phase 01/02, `nestjs-project/CLAUDE.md`)_
+- JSON request/response field names on the wire are `snake_case` (e.g. `access_token`, `refresh_token`); success responses are plain objects and errors are `{ statusCode, error, message }` with `error` carrying the domain code (`VALIDATION_ERROR` for DTO failures). _(from phase 02)_
 - Non-TypeScript runtime assets must be declared in `nest-cli.json` `compilerOptions.assets`. _(from phase 02)_
 
 ## Inherited Deferred Capabilities

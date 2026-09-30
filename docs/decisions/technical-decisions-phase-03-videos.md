@@ -253,6 +253,7 @@ _Subprojects in scope:_
 **Revisions:**
 - 2026-09-30 — Owner exception removed: `stream` redirects only for videos in status `ready`; any other status returns `404` to everyone. Rationale: the route is `@Public()`, so it has no authenticated principal, and no capability of the phase asks for previewing an unprocessed video (validation IC-1).
 - 2026-09-30 — Throttle policy for the videos module: the global `ThrottlerGuard` (10 req/60s per IP, registered as `APP_GUARD` in `AuthModule`) stays; `stream` and `download` use `@SkipThrottle()` (the API only redirects, storage serves the bytes) and init / resume-info / complete / abort use an explicit `@Throttle({ default: { limit: 60, ttl: 60000 } })`. Rationale: a 10GiB upload legitimately refreshes part URLs many times and the inherited 10 req/min ceiling is a global side effect, not a per-domain policy (validation ICC-2).
+- 2026-09-30 — The public metadata endpoint `GET /videos/:publicId` also uses `@SkipThrottle()` (read-only, one call per page view, no state change), completing the throttle policy of the videos module. Rationale: the inherited global ceiling of 10 req/60s per IP would throttle anonymous readers of a public endpoint; found while slicing the plan into Step Implementations.
 
 ---
 
