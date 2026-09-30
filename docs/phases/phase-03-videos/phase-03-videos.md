@@ -2,6 +2,7 @@
 kind: phase
 name: phase-03-videos
 test_specs_aware: true
+affected_subprojects: [nestjs-project]
 sources_mtime:
   docs/phases/phase-03-videos/context.md: "2026-09-30T17:28:51+0200"
   docs/phases/phase-03-videos/library-refs.md: "2026-09-30T17:23:56+0200"
@@ -204,7 +205,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `POST /videos`: validate the declared file, pre-register the video as a `draft` in the caller's channel, open the S3 multipart upload and return the presigned part URLs so the client sends the file directly to storage.
 
 **Route:** POST /videos
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-init-upload.plan.md`
 **Authorization:** Authenticated (any logged-in user with a channel)
 
 **Technical actions:**
@@ -243,7 +244,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `GET /videos/:publicId/upload`, which lets the owner resume an interrupted upload (and poll the video status): it lists the parts already stored and returns fresh presigned URLs for the missing ones.
 
 **Route:** GET /videos/:publicId/upload
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-session.plan.md`
 **Authorization:** Authenticated (channel owner)
 
 **Technical actions:**
@@ -278,7 +279,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `POST /videos/:publicId/upload/complete`: finish the multipart upload, verify the stored size, move the video to `processing` and publish the processing job, compensating when the queue is unavailable.
 
 **Route:** POST /videos/:publicId/upload/complete
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-complete-upload.plan.md`
 **Authorization:** Authenticated (channel owner)
 
 **Technical actions:**
@@ -316,7 +317,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `DELETE /videos/:publicId/upload`, which cancels an in-progress upload: it aborts the multipart upload in storage and removes the draft.
 
 **Route:** DELETE /videos/:publicId/upload
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-abort-upload.plan.md`
 **Authorization:** Authenticated (channel owner)
 
 **Technical actions:**
@@ -442,7 +443,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `GET /videos/:publicId`, the public read of a ready video with its extracted metadata and a short-lived thumbnail URL.
 
 **Route:** GET /videos/:publicId
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-public-metadata.plan.md`
 **Authorization:** Anonymous
 
 **Technical actions:**
@@ -474,7 +475,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `GET /videos/:publicId/stream`: the API authorizes and redirects to a short-lived presigned URL, and storage serves the bytes with range support, so playback never needs the whole file and never passes through the API.
 
 **Route:** GET /videos/:publicId/stream
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-stream.plan.md`
 **Authorization:** Anonymous
 
 **Technical actions:**
@@ -505,7 +506,7 @@ The integration spec overrides `S3_PUBLIC_ENDPOINT` with the service host (`http
 **Description:** Implement `GET /videos/:publicId/download`: an authenticated user is redirected to a short-lived presigned URL that makes the browser save the original file.
 
 **Route:** GET /videos/:publicId/download
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-download.plan.md`
 **Authorization:** Authenticated (any logged-in user)
 
 **Technical actions:**
