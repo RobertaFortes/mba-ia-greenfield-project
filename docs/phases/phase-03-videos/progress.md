@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 11/18 completed
+**SIs:** 12/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -57,3 +57,8 @@
 - **Status:** completed
 - **Tests:** 21/21 passing — probe-parser.util.spec.ts: 8; thumbnail-time.util.spec.ts: 7; ffmpeg.service.integration-spec.ts: 6 (real `ffprobe`/`ffmpeg` over a presigned URL served by real storage: 3 s video metadata, silent video, non-media file, audio-only → `NoVideoStreamError`, JPEG thumbnail capped at 1280 px from a 1920x1080 source, timeout kill)
 - **Observations:** `parseProbeOutput` also treats a "video" stream flagged `attached_pic` (cover art in audio files) as not a video stream. `ffprobe`/`ffmpeg` run through `child_process.spawn` with an argument array (no shell) and read the presigned URL directly with range reads, so nothing is downloaded. The timeout test points `ffprobe` at a local HTTP server that never answers and expects the rejection in under 5 s with a 1 s limit. `src/test/generate-test-video.ts` builds H.264/AAC MP4s from `lavfi` sources (the Debian `ffmpeg` in the image has `libx264`).
+
+### SI-03.12 — Video Processing Service and Queue Consumer
+- **Status:** completed
+- **Tests:** 16/16 passing — video-processing.service.spec.ts: 9 (idempotent skip, state guard, missing video, no video stream → permanent, transient error propagates, thumbnail + metadata update, `processing_error` truncated to 500, only `processing` can fail); video-processing.service.integration-spec.ts: 4 (real DB, storage and FFmpeg: valid video → `ready` with metadata and a JPEG in storage, already-ready untouched, audio-only → permanent error, bounded `markFailed`); video.processor.integration-spec.ts: 3 (real Redis and worker: enqueue → `ready`; no video stream → `failed` after a single probe; transient failure retried 3 times and `failed` only after the last attempt)
+- **Observations:** permanent failures (missing video, wrong state, no video stream) are raised as `PermanentProcessingError` and the processor converts them to BullMQ `UnrecoverableError`; `@OnWorkerEvent('failed')` marks the video failed only when attempts are exhausted or the error is unrecoverable. `markFailed` updates `WHERE status = 'processing'`, so a `ready` video is never downgraded. The success path saves the loaded entity (`Object.assign` + `save`) because `repo.update` rejects the `jsonb` `Record` type. `video.processor.integration-spec.ts` assumes it is the only consumer of the queue: stop the `video-worker` container while running it.
