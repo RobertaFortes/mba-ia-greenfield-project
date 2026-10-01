@@ -48,3 +48,31 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class ChannelNotFoundException extends DomainException {
+  constructor() {
+    super('CHANNEL_NOT_FOUND', 404, 'Channel not found');
+  }
+}
+
+export class VideoFileTooLargeException extends DomainException {
+  constructor() {
+    super('VIDEO_FILE_TOO_LARGE', 400, 'Video file exceeds the 10GiB limit');
+  }
+}
+
+export class VideoUnsupportedContentTypeException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_UNSUPPORTED_CONTENT_TYPE',
+      400,
+      'Unsupported video content type',
+    );
+  }
+}

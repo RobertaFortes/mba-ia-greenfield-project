@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 6/18 completed
+**SIs:** 7/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -32,3 +32,8 @@
 - **Status:** completed
 - **Tests:** 5/5 passing (video-queue.service.integration-spec.ts: 4 against real Redis — job name/data, jobId = video id, idempotent enqueue, 3 attempts + exponential 5000 ms, job survives a reopened queue; videos.module.spec.ts: 1, queue provider stubbed so the unit spec does no I/O)
 - **Observations:** Deviation from TD-01: `@nestjs/bullmq@^11.0.5` installed instead of `^12.x` because v12 is ESM-only and Jest (CommonJS) cannot import it; `ioredis@^5` added because `bullmq@6` no longer bundles it. Recorded as a TD-01 revision and in `library-refs.md`. `BullModule.forRootAsync` reads `queueConfig`.
+
+### SI-03.7 — Start Upload: Draft Pre-registration and Multipart Initialization
+- **Status:** completed
+- **Tests:** 50/50 passing — upload-parts.util.spec.ts: 6; videos.service.spec.ts: 10 (rejections, part URLs, public id retry bounded at 5, compensation incl. multipart abort); videos.service.integration-spec.ts: 4 (real DB + storage); test/videos-init-upload.e2e-spec.ts: 9 (all scenarios of `specs/videos-init-upload.plan.md`, incl. 10 GiB → 80 parts); plus the 21 earlier specs of `src/videos` still green
+- **Observations:** `storage_key` extension comes from the validated content type (mp4/webm/mov/mkv), never from the user-supplied filename. The unique-violation detector lives in `src/common/database/pg-errors.ts` (the existing `ChannelsService` keeps its private copy; not touched to stay in scope). DTOs use explicit `@ApiProperty` because the exported OpenAPI document is generated under ts-node, where the Swagger CLI plugin does not run (the Phase 02 DTOs have empty schemas for that reason). E2E tests override the `videoConfig`/`storageConfig` providers (part size 5 MiB, public endpoint `http://storage:9000`) instead of env vars, so no module-registry tricks are needed; shared helper in `test/helpers/videos-e2e.helper.ts`. `npm run test:e2e` now passes `--runInBand` (as the project CLAUDE.md requires: the e2e suites share one database and the new suites clean all tables).

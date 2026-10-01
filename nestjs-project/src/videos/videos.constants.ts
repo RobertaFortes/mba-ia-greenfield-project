@@ -18,3 +18,16 @@ export const ALLOWED_VIDEO_CONTENT_TYPES = [
   'video/quicktime',
   'video/x-matroska',
 ] as const;
+
+export const VIDEO_FILE_EXTENSIONS: Record<
+  (typeof ALLOWED_VIDEO_CONTENT_TYPES)[number],
+  string
+> = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+  'video/x-matroska': 'mkv',
+};
+
+export const VIDEO_TITLE_MAX_LENGTH = 200;
+export const PUBLIC_ID_MAX_ATTEMPTS = 5;
