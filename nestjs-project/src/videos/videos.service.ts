@@ -26,8 +26,10 @@ import type { InitUploadResponseDto } from './dto/init-upload-response.dto';
 import type { InitUploadDto } from './dto/init-upload.dto';
 import { VideoStatus } from './entities/video-status.enum';
 import { Video } from './entities/video.entity';
+import type { PublicVideoResponse } from './dto/public-video.response';
 import type { UploadSessionResponse } from './dto/upload-session.response';
 import { generatePublicId } from './public-id.util';
+import { toSafeDownloadFilename } from './download-filename.util';
 import { VideoQueueService } from './video-queue.service';
 import { calculatePartPlan } from './upload-parts.util';
 import {
@@ -264,6 +266,57 @@ export class VideosService {
         });
     }
     await this.videos.delete(video.id);
+  }
+
+  async getPublicVideo(publicId: string): Promise<PublicVideoResponse> {
+    const video = await this.findReadyVideo(publicId);
+    return {
+      id: video.id,
+      public_id: video.public_id,
+      title: video.title,
+      status: video.status,
+      duration_seconds: video.duration_seconds as number,
+      width: video.width as number,
+      height: video.height as number,
+      video_codec: video.video_codec as string,
+      audio_codec: video.audio_codec,
+      bitrate: video.bitrate as number,
+      format_name: video.format_name as string,
+      fps: video.fps as number,
+      thumbnail_url: await this.storage.presignGet(
+        video.thumbnail_key as string,
+        this.config.playbackUrlExpirationSeconds,
+      ),
+      created_at: video.created_at.toISOString(),
+      processed_at: (video.processed_at as Date).toISOString(),
+    };
+  }
+
+  async getStreamUrl(publicId: string): Promise<string> {
+    const video = await this.findReadyVideo(publicId);
+    return this.storage.presignGet(
+      video.storage_key,
+      this.config.playbackUrlExpirationSeconds,
+    );
+  }
+
+  async getDownloadUrl(publicId: string): Promise<string> {
+    const video = await this.findReadyVideo(publicId);
+    return this.storage.presignGet(
+      video.storage_key,
+      this.config.playbackUrlExpirationSeconds,
+      { downloadFilename: toSafeDownloadFilename(video.original_filename) },
+    );
+  }
+
+  /** Public routes only see `ready` videos; every other state looks like a missing id. */
+  private async findReadyVideo(publicId: string): Promise<Video> {
+    const video = await this.videos.findOneBy({
+      public_id: publicId,
+      status: VideoStatus.READY,
+    });
+    if (!video) throw new VideoNotFoundException();
+    return video;
   }
 
   /** Owner-only lookup: another channel's video is indistinguishable from a missing one. */

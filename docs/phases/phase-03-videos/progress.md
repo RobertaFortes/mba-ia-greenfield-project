@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 13/18 completed
+**SIs:** 16/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -67,3 +67,18 @@
 - **Status:** completed
 - **Tests:** 2/2 passing — worker.module.spec.ts: 1 (compilation, queue stubbed); worker.module.integration-spec.ts: 1 (boots the application context via `NestFactory.createApplicationContext` and takes a real job to `ready`). Manual check: `docker compose up -d video-worker` compiles and logs `Consuming queue "video-processing" (no HTTP server)`.
 - **Observations:** the shared bootstrap pieces were extracted so API and worker load the same env: `src/config/config-module.options.ts`, `src/database/typeorm.options.ts`, `src/queue/bull.options.ts` (`AppModule` now uses them; behavior unchanged). `WorkerModule` registers `User`, `Channel` and `Video` explicitly because `Video → Channel → User` relations need all three in the TypeORM metadata. Scripts `start:worker` and `start:worker:dev` added. Caveat: the API (`start:dev`) and the worker (`start:worker:dev`) both build into the shared `dist/` with `deleteOutDir`, so two watchers can briefly delete each other's output. With `video-worker` running, `video.processor.integration-spec.ts` is no longer the only queue consumer: stop `video-worker` before running it (`docker compose stop video-worker`).
+
+### SI-03.14 — Public Video Metadata
+- **Status:** completed
+- **Tests:** unit — videos.service.spec.ts `getPublicVideo`: 2 + shared visibility rule (3 methods x 2); integration — videos.service.integration-spec.ts: thumbnail URL fetchable as `image/jpeg`, non-ready hidden; e2e — test/videos-public-metadata.e2e-spec.ts: 4 (all scenarios of `specs/videos-public-metadata.plan.md`, with a `ready` video produced through the real pipeline)
+- **Observations:** implemented together with SI-03.15 and SI-03.16 (same `findReadyVideo` rule: only `ready` videos are visible, any other state answers `VIDEO_NOT_FOUND`). `@Public()` + `@SkipThrottle()`. The response omits `storage_key`, `upload_id` and `channel_id`.
+
+### SI-03.15 — Streaming
+- **Status:** completed
+- **Tests:** unit — `getStreamUrl`: 1 + shared visibility; integration — a range request on the presigned URL answers `206` with `Content-Range: bytes 0-99/1000` and 100 bytes; e2e — test/videos-stream.e2e-spec.ts: 4 (302 without token, `Range` → 206 + exactly 100 bytes, fifteen requests unthrottled, non-visible states → 404)
+- **Observations:** the route answers `302` via `@Redirect()` returning `{ url, statusCode: 302 }`; the API never carries the bytes.
+
+### SI-03.16 — Download
+- **Status:** completed
+- **Tests:** unit — download-filename.util.spec.ts: 9, `getDownloadUrl`: 1 + shared visibility; integration — presigned target answers `Content-Disposition: attachment; filename="my clipfinal.mp4"`; e2e — test/videos-download.e2e-spec.ts: 4 (401 without token, any logged-in user gets a 302 whose target has the attachment disposition, unsafe filename `we"ird/..\name.mp4` becomes `weird..name.mp4`, non-visible states → 404)
+- **Observations:** the E2E helpers gained `largeTestVideo` (a real ~11 MiB H.264/AAC MP4 generated with constant bitrate so it needs three 5 MiB parts), `uploadFile`, `waitForStatus` and `createReadyVideo`; `bootstrapVideosApp({ withProcessing: true })` runs the queue consumer inside the test process (`VideoProcessingModule`), as the specs describe, so these suites do not depend on the `video-worker` container.

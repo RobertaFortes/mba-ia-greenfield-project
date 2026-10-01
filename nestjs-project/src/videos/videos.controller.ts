@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Redirect,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,8 +16,9 @@ import {
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import {
@@ -25,6 +27,7 @@ import {
 } from './dto/complete-upload.dto';
 import { InitUploadResponseDto } from './dto/init-upload-response.dto';
 import { InitUploadDto } from './dto/init-upload.dto';
+import { PublicVideoResponse } from './dto/public-video.response';
 import { UploadSessionResponse } from './dto/upload-session.response';
 import { ParseVideoPublicIdPipe } from './parse-video-public-id.pipe';
 import { VideosService } from './videos.service';
@@ -179,5 +182,88 @@ export class VideosController {
     @Param('publicId', ParseVideoPublicIdPipe) publicId: string,
   ): Promise<void> {
     await this.videosService.abortUpload(user.sub, publicId);
+  }
+
+  @Public()
+  @SkipThrottle()
+  @Get(':publicId')
+  @ApiOperation({
+    summary: 'Get public video metadata',
+    description:
+      'Public read of a ready video: extracted metadata and a short-lived thumbnail URL. Videos in any other state answer 404.',
+  })
+  @ApiResponse({ status: 200, type: PublicVideoResponse })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Unknown or malformed publicId, or the video is not ready (VIDEO_NOT_FOUND)',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async getPublicVideo(
+    @Param('publicId', ParseVideoPublicIdPipe) publicId: string,
+  ): Promise<PublicVideoResponse> {
+    return this.videosService.getPublicVideo(publicId);
+  }
+
+  @Public()
+  @SkipThrottle()
+  @Get(':publicId/stream')
+  @Redirect()
+  @ApiOperation({
+    summary: 'Stream a video',
+    description:
+      'Redirects (302) to a short-lived presigned URL. Storage serves the bytes with HTTP range support, so the API never carries the video.',
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Location is the presigned GET URL of the original file',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Unknown or malformed publicId, or the video is not ready (VIDEO_NOT_FOUND)',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async stream(
+    @Param('publicId', ParseVideoPublicIdPipe) publicId: string,
+  ): Promise<{ url: string; statusCode: number }> {
+    return {
+      url: await this.videosService.getStreamUrl(publicId),
+      statusCode: HttpStatus.FOUND,
+    };
+  }
+
+  @SkipThrottle()
+  @Get(':publicId/download')
+  @Redirect()
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Download the original video',
+    description:
+      'Redirects (302) to a short-lived presigned URL that makes the browser save the original file. Any logged-in user may download.',
+  })
+  @ApiResponse({
+    status: 302,
+    description:
+      'Location is the presigned GET URL with Content-Disposition: attachment',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Unknown or malformed publicId, or the video is not ready (VIDEO_NOT_FOUND)',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async download(
+    @Param('publicId', ParseVideoPublicIdPipe) publicId: string,
+  ): Promise<{ url: string; statusCode: number }> {
+    return {
+      url: await this.videosService.getDownloadUrl(publicId),
+      statusCode: HttpStatus.FOUND,
+    };
   }
 }

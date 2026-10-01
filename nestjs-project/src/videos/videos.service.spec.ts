@@ -46,11 +46,13 @@ describe('VideosService', () => {
     completeMultipartUpload: jest.fn(),
     headObject: jest.fn(),
     deleteObject: jest.fn(),
+    presignGet: jest.fn(),
   };
   const queue = { enqueue: jest.fn() };
   const config = {
     uploadPartSizeBytes: 5 * MIB,
     uploadUrlExpirationSeconds: 3600,
+    playbackUrlExpirationSeconds: 300,
   };
   const dto = {
     filename: 'my holiday.mov',
@@ -78,6 +80,9 @@ describe('VideosService', () => {
     storage.completeMultipartUpload.mockReset().mockResolvedValue(undefined);
     storage.headObject.mockReset();
     storage.deleteObject.mockReset().mockResolvedValue(undefined);
+    storage.presignGet
+      .mockReset()
+      .mockImplementation((key: string) => Promise.resolve(`http://s/${key}`));
 
     const module = await Test.createTestingModule({
       providers: [
@@ -493,6 +498,118 @@ describe('VideosService', () => {
         service.abortUpload('user-1', draft.public_id),
       ).rejects.toThrow('boom');
       expect(repo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  const ready = {
+    ...draft,
+    status: VideoStatus.READY,
+    upload_id: null,
+    original_filename: 'my "clip"/final.mp4',
+    thumbnail_key: 'videos/video-1/thumbnail.jpg',
+    duration_seconds: 3,
+    width: 320,
+    height: 240,
+    video_codec: 'h264',
+    audio_codec: 'aac',
+    bitrate: 69000,
+    format_name: 'mov,mp4',
+    fps: 25,
+    created_at: new Date('2026-10-01T10:00:00.000Z'),
+    processed_at: new Date('2026-10-01T10:00:05.000Z'),
+  };
+
+  describe.each([
+    ['getPublicVideo', (id: string) => service.getPublicVideo(id)],
+    ['getStreamUrl', (id: string) => service.getStreamUrl(id)],
+    ['getDownloadUrl', (id: string) => service.getDownloadUrl(id)],
+  ])('%s visibility', (_name, call) => {
+    it('should only look up videos in the ready state', async () => {
+      repo.findOneBy.mockResolvedValue(ready);
+
+      await call(ready.public_id);
+
+      expect(repo.findOneBy).toHaveBeenCalledWith({
+        public_id: ready.public_id,
+        status: VideoStatus.READY,
+      });
+    });
+
+    it('should answer VIDEO_NOT_FOUND when no ready video matches', async () => {
+      repo.findOneBy.mockResolvedValue(null);
+
+      await expect(call('abcdefghijk')).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
+      expect(storage.presignGet).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPublicVideo', () => {
+    it('should expose the metadata and a presigned thumbnail URL', async () => {
+      repo.findOneBy.mockResolvedValue(ready);
+
+      const result = await service.getPublicVideo(ready.public_id);
+
+      expect(result).toEqual({
+        id: 'video-1',
+        public_id: ready.public_id,
+        title: 'clip',
+        status: 'ready',
+        duration_seconds: 3,
+        width: 320,
+        height: 240,
+        video_codec: 'h264',
+        audio_codec: 'aac',
+        bitrate: 69000,
+        format_name: 'mov,mp4',
+        fps: 25,
+        thumbnail_url: 'http://s/videos/video-1/thumbnail.jpg',
+        created_at: '2026-10-01T10:00:00.000Z',
+        processed_at: '2026-10-01T10:00:05.000Z',
+      });
+      expect(storage.presignGet).toHaveBeenCalledWith(
+        'videos/video-1/thumbnail.jpg',
+        300,
+      );
+    });
+
+    it('should not leak storage internals', async () => {
+      repo.findOneBy.mockResolvedValue(ready);
+
+      const result = await service.getPublicVideo(ready.public_id);
+
+      expect(result).not.toHaveProperty('storage_key');
+      expect(result).not.toHaveProperty('upload_id');
+      expect(result).not.toHaveProperty('channel_id');
+    });
+  });
+
+  describe('getStreamUrl', () => {
+    it('should presign the original object without a download filename', async () => {
+      repo.findOneBy.mockResolvedValue(ready);
+
+      const url = await service.getStreamUrl(ready.public_id);
+
+      expect(url).toBe('http://s/videos/video-1/original.mp4');
+      expect(storage.presignGet).toHaveBeenCalledWith(
+        'videos/video-1/original.mp4',
+        300,
+      );
+    });
+  });
+
+  describe('getDownloadUrl', () => {
+    it('should presign the original object with a sanitized download filename', async () => {
+      repo.findOneBy.mockResolvedValue(ready);
+
+      await service.getDownloadUrl(ready.public_id);
+
+      expect(storage.presignGet).toHaveBeenCalledWith(
+        'videos/video-1/original.mp4',
+        300,
+        { downloadFilename: 'my clipfinal.mp4' },
+      );
     });
   });
 });

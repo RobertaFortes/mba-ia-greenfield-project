@@ -371,4 +371,91 @@ describe('VideosService (integration)', () => {
       ).rejects.toBeInstanceOf(VideoNotFoundException);
     });
   });
+
+  describe('public delivery (ready video)', () => {
+    async function readyVideo(userId: string): Promise<Video> {
+      const init = await service.initUpload(userId, {
+        filename: 'my "clip"/final.mp4',
+        content_type: 'video/mp4',
+        size_bytes: 100,
+      });
+      const repo = dataSource.getRepository(Video);
+      const row = await repo.findOneByOrFail({ id: init.id });
+      await storage.abortMultipartUpload(row.storage_key, init.upload_id);
+      const original = Buffer.alloc(1000, 7);
+      await storage.putObject(row.storage_key, original, 'video/mp4');
+      await storage.putObject(
+        `videos/${row.id}/thumbnail.jpg`,
+        Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+        'image/jpeg',
+      );
+      Object.assign(row, {
+        status: VideoStatus.READY,
+        upload_id: null,
+        thumbnail_key: `videos/${row.id}/thumbnail.jpg`,
+        duration_seconds: 3,
+        width: 320,
+        height: 240,
+        video_codec: 'h264',
+        bitrate: 1000,
+        format_name: 'mov,mp4',
+        fps: 25,
+        processed_at: new Date(),
+      });
+      return repo.save(row);
+    }
+
+    it('should return metadata whose thumbnail URL is fetchable as an image', async () => {
+      const { userId } = await createUserWithChannel();
+      const video = await readyVideo(userId);
+
+      const result = await service.getPublicVideo(video.public_id);
+
+      const response = await fetch(result.thumbnail_url);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('image/jpeg');
+    });
+
+    it('should hide a video that is not ready', async () => {
+      const { userId } = await createUserWithChannel();
+      const video = await readyVideo(userId);
+      await dataSource
+        .getRepository(Video)
+        .update(video.id, { status: VideoStatus.PROCESSING });
+
+      await expect(
+        service.getPublicVideo(video.public_id),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      await expect(
+        service.getStreamUrl(video.public_id),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      await expect(
+        service.getDownloadUrl(video.public_id),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it('should stream through a presigned URL that honors a range request', async () => {
+      const { userId } = await createUserWithChannel();
+      const video = await readyVideo(userId);
+
+      const url = await service.getStreamUrl(video.public_id);
+      const response = await fetch(url, { headers: { Range: 'bytes=0-99' } });
+
+      expect(response.status).toBe(206);
+      expect(response.headers.get('content-range')).toBe('bytes 0-99/1000');
+      expect((await response.arrayBuffer()).byteLength).toBe(100);
+    });
+
+    it('should download through a URL with an attachment disposition and a sanitized name', async () => {
+      const { userId } = await createUserWithChannel();
+      const video = await readyVideo(userId);
+
+      const url = await service.getDownloadUrl(video.public_id);
+      const response = await fetch(url, { headers: { Range: 'bytes=0-9' } });
+
+      expect(response.headers.get('content-disposition')).toBe(
+        'attachment; filename="my clipfinal.mp4"',
+      );
+    });
+  });
 });

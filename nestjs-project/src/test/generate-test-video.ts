@@ -11,6 +11,8 @@ export interface TestVideoOptions {
   withAudio?: boolean;
   /** Generates a file with an audio stream only. */
   audioOnly?: boolean;
+  /** Constant video bitrate such as `9M`, to get a file of a predictable size. */
+  constantBitrate?: string;
 }
 
 function runFfmpeg(args: string[]): Promise<void> {
@@ -41,6 +43,7 @@ export async function generateTestVideo(
     fps = 25,
     withAudio = true,
     audioOnly = false,
+    constantBitrate,
   } = options;
   const dir = await mkdtemp(join(tmpdir(), 'streamtube-test-video-'));
   const output = join(dir, 'video.mp4');
@@ -66,6 +69,20 @@ export async function generateTestVideo(
           'libx264',
           '-pix_fmt',
           'yuv420p',
+          ...(constantBitrate
+            ? [
+                '-b:v',
+                constantBitrate,
+                '-minrate',
+                constantBitrate,
+                '-maxrate',
+                constantBitrate,
+                '-bufsize',
+                constantBitrate,
+                '-x264-params',
+                'nal-hrd=cbr',
+              ]
+            : []),
           ...(withAudio ? ['-c:a', 'aac'] : []),
           '-movflags',
           '+faststart',
