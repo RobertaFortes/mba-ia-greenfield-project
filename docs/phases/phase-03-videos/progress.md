@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 3/18 completed
+**SIs:** 5/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -17,3 +17,13 @@
 - **Status:** completed
 - **Tests:** 8/8 passing (storage.module.spec.ts: 1 unit; storage.service.integration-spec.ts: 7 integration against the real RustFS — bucket bootstrap idempotence, 3-part multipart, abort, 206 range, Content-Disposition, expiry 403, internal presign)
 - **Observations:** `ensureBucket` also tolerates `BucketAlreadyExists` (RustFS/other S3 servers may answer with it for an owned bucket). The download filename is sanitized (`"`, `\`, CR/LF replaced by `_`) before going into `ResponseContentDisposition`. The integration spec sets `S3_PUBLIC_ENDPOINT=http://storage:9000` because presigned URLs are fetched from inside the container.
+
+### SI-03.4 — Video Entity, Status Enum, Public Id and Migration
+- **Status:** completed
+- **Tests:** 20/20 passing (video.entity.integration-spec.ts: 6; public-id.util.spec.ts: 14; videos.module.spec.ts: 1; migrations.integration-spec.ts: 3 — now covers `CreateVideos` apply, revert of the table and `videos_status_enum`, and revert of the auth migration)
+- **Observations:** Migration generated with the TypeORM CLI (`1790840281098-CreateVideos.ts`, formatted with Prettier) and a second `migration:generate` reports no schema drift. `cleanAllTables` now deletes from `videos` first. `VideosModule` exports `TypeOrmModule`; services/controllers are added by later SIs. The pre-existing `Function` lint error in `create-test-data-source.ts` was left untouched (out of scope).
+
+### SI-03.5 — Channel Lookup by User
+- **Status:** completed
+- **Tests:** 3 new integration tests passing in channels.service.integration-spec.ts (28/28 in `src/channels`)
+- **Observations:** none
