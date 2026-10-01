@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 12/18 completed
+**SIs:** 13/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -62,3 +62,8 @@
 - **Status:** completed
 - **Tests:** 16/16 passing — video-processing.service.spec.ts: 9 (idempotent skip, state guard, missing video, no video stream → permanent, transient error propagates, thumbnail + metadata update, `processing_error` truncated to 500, only `processing` can fail); video-processing.service.integration-spec.ts: 4 (real DB, storage and FFmpeg: valid video → `ready` with metadata and a JPEG in storage, already-ready untouched, audio-only → permanent error, bounded `markFailed`); video.processor.integration-spec.ts: 3 (real Redis and worker: enqueue → `ready`; no video stream → `failed` after a single probe; transient failure retried 3 times and `failed` only after the last attempt)
 - **Observations:** permanent failures (missing video, wrong state, no video stream) are raised as `PermanentProcessingError` and the processor converts them to BullMQ `UnrecoverableError`; `@OnWorkerEvent('failed')` marks the video failed only when attempts are exhausted or the error is unrecoverable. `markFailed` updates `WHERE status = 'processing'`, so a `ready` video is never downgraded. The success path saves the loaded entity (`Object.assign` + `save`) because `repo.update` rejects the `jsonb` `Record` type. `video.processor.integration-spec.ts` assumes it is the only consumer of the queue: stop the `video-worker` container while running it.
+
+### SI-03.13 — Worker Entry Point and Compose Service
+- **Status:** completed
+- **Tests:** 2/2 passing — worker.module.spec.ts: 1 (compilation, queue stubbed); worker.module.integration-spec.ts: 1 (boots the application context via `NestFactory.createApplicationContext` and takes a real job to `ready`). Manual check: `docker compose up -d video-worker` compiles and logs `Consuming queue "video-processing" (no HTTP server)`.
+- **Observations:** the shared bootstrap pieces were extracted so API and worker load the same env: `src/config/config-module.options.ts`, `src/database/typeorm.options.ts`, `src/queue/bull.options.ts` (`AppModule` now uses them; behavior unchanged). `WorkerModule` registers `User`, `Channel` and `Video` explicitly because `Video → Channel → User` relations need all three in the TypeORM metadata. Scripts `start:worker` and `start:worker:dev` added. Caveat: the API (`start:dev`) and the worker (`start:worker:dev`) both build into the shared `dist/` with `deleteOutDir`, so two watchers can briefly delete each other's output. With `video-worker` running, `video.processor.integration-spec.ts` is no longer the only queue consumer: stop `video-worker` before running it (`docker compose stop video-worker`).
