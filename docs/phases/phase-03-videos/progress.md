@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 16/18 completed
+**SIs:** 17/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -66,7 +66,7 @@
 ### SI-03.13 — Worker Entry Point and Compose Service
 - **Status:** completed
 - **Tests:** 2/2 passing — worker.module.spec.ts: 1 (compilation, queue stubbed); worker.module.integration-spec.ts: 1 (boots the application context via `NestFactory.createApplicationContext` and takes a real job to `ready`). Manual check: `docker compose up -d video-worker` compiles and logs `Consuming queue "video-processing" (no HTTP server)`.
-- **Observations:** the shared bootstrap pieces were extracted so API and worker load the same env: `src/config/config-module.options.ts`, `src/database/typeorm.options.ts`, `src/queue/bull.options.ts` (`AppModule` now uses them; behavior unchanged). `WorkerModule` registers `User`, `Channel` and `Video` explicitly because `Video → Channel → User` relations need all three in the TypeORM metadata. Scripts `start:worker` and `start:worker:dev` added. Caveat: the API (`start:dev`) and the worker (`start:worker:dev`) both build into the shared `dist/` with `deleteOutDir`, so two watchers can briefly delete each other's output. With `video-worker` running, `video.processor.integration-spec.ts` is no longer the only queue consumer: stop `video-worker` before running it (`docker compose stop video-worker`).
+- **Observations:** the shared bootstrap pieces were extracted so API and worker load the same env: `src/config/config-module.options.ts`, `src/database/typeorm.options.ts`, `src/queue/bull.options.ts` (`AppModule` now uses them; behavior unchanged). `WorkerModule` registers `User`, `Channel` and `Video` explicitly because `Video → Channel → User` relations need all three in the TypeORM metadata. Scripts `start:worker` and `start:worker:dev` added. Acceptance criteria checked by hand: `video-worker` logs the queue it consumes; a job enqueued while the worker is stopped stays `waiting` in Redis; `SIGTERM` to the compiled worker (`node dist/worker/worker.main`) closes the application context and exits with code 0. Deviation from the plan/library-refs: `worker.main.ts` handles `SIGTERM`/`SIGINT` itself instead of `app.enableShutdownHooks()`, because Nest re-raises the signal after closing and the process then exits with 143, not 0. Caveat: the API (`start:dev`) and the worker (`start:worker:dev`) both build into the shared `dist/` with `deleteOutDir`, so two watchers can briefly delete each other's output. With `video-worker` running, `video.processor.integration-spec.ts` is no longer the only queue consumer: stop `video-worker` before running it (`docker compose stop video-worker`).
 
 ### SI-03.14 — Public Video Metadata
 - **Status:** completed
@@ -82,3 +82,8 @@
 - **Status:** completed
 - **Tests:** unit — download-filename.util.spec.ts: 9, `getDownloadUrl`: 1 + shared visibility; integration — presigned target answers `Content-Disposition: attachment; filename="my clipfinal.mp4"`; e2e — test/videos-download.e2e-spec.ts: 4 (401 without token, any logged-in user gets a 302 whose target has the attachment disposition, unsafe filename `we"ird/..\name.mp4` becomes `weird..name.mp4`, non-visible states → 404)
 - **Observations:** the E2E helpers gained `largeTestVideo` (a real ~11 MiB H.264/AAC MP4 generated with constant bitrate so it needs three 5 MiB parts), `uploadFile`, `waitForStatus` and `createReadyVideo`; `bootstrapVideosApp({ withProcessing: true })` runs the queue consumer inside the test process (`VideoProcessingModule`), as the specs describe, so these suites do not depend on the `video-worker` container.
+
+### SI-03.17 — End-to-End Upload and Processing Flow
+- **Status:** completed
+- **Tests:** 4/4 passing — test/videos-pipeline.e2e-spec.ts: a real 11 MB MP4 uploaded in three parts → complete → `ready` (polling `GET /videos/:publicId/upload`) → metadata (10 s, 640x360) with a JPEG thumbnail → stream 302 + `Range` 206 with 100 bytes → download 302 with `attachment; filename="holiday.mp4"`; a non-video object ends `failed` with a `processing_error` (after the 3 attempts, ~16 s) and the public route answers 404; another user's upload session → `404 VIDEO_NOT_FOUND`; aborting a fresh draft removes the row and the multipart upload
+- **Observations:** deviation from the plan: the shared helper lives in `test/helpers/videos-e2e.helper.ts` (built across SI-03.7 to SI-03.16) instead of `test/support/upload-video.ts`. The processing module runs inside the test process (`bootstrapVideosApp({ withProcessing: true })`), so the suite does not depend on the `video-worker` container.
