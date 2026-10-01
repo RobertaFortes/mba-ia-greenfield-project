@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 2/18 completed
+**SIs:** 3/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -12,3 +12,8 @@
 - **Status:** completed
 - **Tests:** no tests (infra); verified manually — `storage` and `redis` reach `healthy`; `redis-cli ping` → `PONG`; signed `ListBuckets` from `nestjs-api` against `http://storage:9000` succeeds; `ffmpeg`/`ffprobe` 5.1.9 present; a key written to Redis survived `docker compose restart redis` (appendonly yes)
 - **Observations:** `storage` uses `rustfs/rustfs:1.0.0` (TD-02 revision: MinIO community image archived); credentials map `S3_ACCESS_KEY`/`S3_SECRET_KEY` to `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY`; healthcheck is `curl -f http://localhost:9000/health` (curl exists in the image). Docker on this host needs `BUILDX_CONFIG` pointing to a writable dir because `~/.docker/buildx` is root-owned. The container does not receive `.env` as process env: code reads it through `dotenv/config` (jest) or Nest `ConfigModule`.
+
+### SI-03.3 — StorageModule: S3 Clients, Bucket Bootstrap and Presigning
+- **Status:** completed
+- **Tests:** 8/8 passing (storage.module.spec.ts: 1 unit; storage.service.integration-spec.ts: 7 integration against the real RustFS — bucket bootstrap idempotence, 3-part multipart, abort, 206 range, Content-Disposition, expiry 403, internal presign)
+- **Observations:** `ensureBucket` also tolerates `BucketAlreadyExists` (RustFS/other S3 servers may answer with it for an owned bucket). The download filename is sanitized (`"`, `\`, CR/LF replaced by `_`) before going into `ResponseContentDisposition`. The integration spec sets `S3_PUBLIC_ENDPOINT=http://storage:9000` because presigned URLs are fetched from inside the container.
