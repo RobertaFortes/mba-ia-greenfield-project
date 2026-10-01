@@ -7,7 +7,7 @@ import { StorageService } from '../../storage/storage.service';
 import { VideoStatus } from '../entities/video-status.enum';
 import { Video } from '../entities/video.entity';
 import { FfmpegService } from './ffmpeg.service';
-import { NoVideoStreamError } from './probe-parser.util';
+import { NoVideoStreamError, type ParsedProbe } from './probe-parser.util';
 import { PermanentProcessingError } from './video-processing.errors';
 import { calculateThumbnailTime } from './thumbnail-time.util';
 
@@ -41,7 +41,7 @@ export class VideoProcessingService {
       video.storage_key,
       this.config.processingTimeoutSeconds * 2,
     );
-    let probe;
+    let probe: ParsedProbe;
     try {
       probe = await this.ffmpeg.probe(url);
     } catch (error) {
