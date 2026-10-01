@@ -12,6 +12,10 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      storage:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   db:
     image: postgres:17
@@ -33,4 +37,32 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  storage:
+    image: rustfs/rustfs:1.0.0
+    ports:
+      - "9000:9000"
+    environment:
+      - RUSTFS_ACCESS_KEY=${S3_ACCESS_KEY}
+      - RUSTFS_SECRET_KEY=${S3_SECRET_KEY}
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs -o /dev/null http://localhost:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  storage-data:
+  redis-data:
