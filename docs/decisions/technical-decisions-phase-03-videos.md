@@ -57,6 +57,8 @@ _Subprojects in scope:_
 
 **Decision:** A (BullMQ + Redis)
 **Libraries:** `@nestjs/bullmq@^12.x`, `bullmq@^6.x`
+**Revisions:**
+- 2026-10-01 — Installed `@nestjs/bullmq@^11.0.5` (not `^12.x`) and added `ioredis@^5`. Rationale (found while implementing SI-03.6): `@nestjs/bullmq@12.0.0` and `@nestjs/bull-shared@12.0.0` are ESM-only (`"type": "module"`), and the project plus Jest run as CommonJS, so any suite importing `@nestjs/bullmq` fails with `Unexpected token 'export'`. `@nestjs/bullmq@11.0.5` is CommonJS and still declares peers `@nestjs/core ^10 || ^11` and `bullmq ^3–^6`. `bullmq@6` made `ioredis` an optional peer, so it must be installed explicitly. The `BullModule`/`@Processor`/`WorkerHost` API used by this phase is identical in 11 and 12.
 
 ---
 

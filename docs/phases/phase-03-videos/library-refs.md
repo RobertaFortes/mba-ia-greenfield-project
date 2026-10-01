@@ -22,7 +22,7 @@ sources_mtime:
 
 # phase-03-videos — Library References
 
-Distilled docs for the libraries decided in this phase (`phase-03-videos/TD-01` and `TD-02`). Pulled via Context7; installed-version compatibility checked against `npm view` (`@nestjs/bullmq@12.0.0` declares peers `@nestjs/core ^10 || ^11 || ^12` and `bullmq ^3 – ^6`; `bullmq@6.3.10`; `@aws-sdk/*@3.1143.0`, Node ≥ 20 — the project runs Node 25). Re-fetch when the underlying TD changes.
+Distilled docs for the libraries decided in this phase (`phase-03-videos/TD-01` and `TD-02`). Pulled via Context7; installed-version compatibility checked against `npm view` (`@nestjs/bullmq@12.0.0` — installed as `@nestjs/bullmq@^11.0.5` instead because v12 is ESM-only and breaks Jest/CommonJS, see TD-01 revision — declares peers `@nestjs/core ^10 || ^11 || ^12` and `bullmq ^3 – ^6`; `bullmq@6.3.10`; `@aws-sdk/*@3.1143.0`, Node ≥ 20 — the project runs Node 25). Re-fetch when the underlying TD changes.
 
 ## @nestjs/bullmq
 

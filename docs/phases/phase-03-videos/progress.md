@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 5/18 completed
+**SIs:** 6/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -27,3 +27,8 @@
 - **Status:** completed
 - **Tests:** 3 new integration tests passing in channels.service.integration-spec.ts (28/28 in `src/channels`)
 - **Observations:** none
+
+### SI-03.6 — Video Processing Queue Producer
+- **Status:** completed
+- **Tests:** 5/5 passing (video-queue.service.integration-spec.ts: 4 against real Redis — job name/data, jobId = video id, idempotent enqueue, 3 attempts + exponential 5000 ms, job survives a reopened queue; videos.module.spec.ts: 1, queue provider stubbed so the unit spec does no I/O)
+- **Observations:** Deviation from TD-01: `@nestjs/bullmq@^11.0.5` installed instead of `^12.x` because v12 is ESM-only and Jest (CommonJS) cannot import it; `ioredis@^5` added because `bullmq@6` no longer bundles it. Recorded as a TD-01 revision and in `library-refs.md`. `BullModule.forRootAsync` reads `queueConfig`.

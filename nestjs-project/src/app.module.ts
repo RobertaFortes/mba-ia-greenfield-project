@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigType } from '@nestjs/config';
+import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -44,6 +45,12 @@ import { VideosModule } from './videos/videos.module';
         database: dbConfig.name,
         autoLoadEntities: true,
         synchronize: false,
+      }),
+    }),
+    BullModule.forRootAsync({
+      inject: [queueConfig.KEY],
+      useFactory: (queue: ConfigType<typeof queueConfig>) => ({
+        connection: { host: queue.host, port: queue.port },
       }),
     }),
     AuthModule,
