@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 7/18 completed
+**SIs:** 10/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -37,3 +37,18 @@
 - **Status:** completed
 - **Tests:** 50/50 passing — upload-parts.util.spec.ts: 6; videos.service.spec.ts: 10 (rejections, part URLs, public id retry bounded at 5, compensation incl. multipart abort); videos.service.integration-spec.ts: 4 (real DB + storage); test/videos-init-upload.e2e-spec.ts: 9 (all scenarios of `specs/videos-init-upload.plan.md`, incl. 10 GiB → 80 parts); plus the 21 earlier specs of `src/videos` still green
 - **Observations:** `storage_key` extension comes from the validated content type (mp4/webm/mov/mkv), never from the user-supplied filename. The unique-violation detector lives in `src/common/database/pg-errors.ts` (the existing `ChannelsService` keeps its private copy; not touched to stay in scope). DTOs use explicit `@ApiProperty` because the exported OpenAPI document is generated under ts-node, where the Swagger CLI plugin does not run (the Phase 02 DTOs have empty schemas for that reason). E2E tests override the `videoConfig`/`storageConfig` providers (part size 5 MiB, public endpoint `http://storage:9000`) instead of env vars, so no module-registry tricks are needed; shared helper in `test/helpers/videos-e2e.helper.ts`. `npm run test:e2e` now passes `--runInBand` (as the project CLAUDE.md requires: the e2e suites share one database and the new suites clean all tables).
+
+### SI-03.8 — Resume Upload: Session State and Pending Part URLs
+- **Status:** completed
+- **Tests:** unit — parse-video-public-id.pipe.spec.ts: 9, videos.service.spec.ts `getUploadSession`: 7; integration — videos.service.integration-spec.ts: 2 (2 of 3 parts → 2 uploaded + 1 pending with a working URL; foreign channel hidden); e2e — test/videos-upload-session.e2e-spec.ts: 6 (all scenarios of `specs/videos-upload-session.plan.md`)
+- **Observations:** implemented together with SI-03.9 and SI-03.10 because the three routes share the `:publicId` pipe, the owner lookup (`findOwnedVideo`: user without channel and foreign video both answer `VIDEO_NOT_FOUND`) and the e2e helpers (`startUpload`, `putPart`, `uploadAllParts` in `test/helpers/videos-e2e.helper.ts`).
+
+### SI-03.9 — Complete Upload and Enqueue Processing
+- **Status:** completed
+- **Tests:** unit — videos.service.spec.ts `completeUpload`: 20 (state guard, part coverage incl. duplicates/out-of-range, 4 storage rejection names, size mismatch, happy path, enqueue failure compensation); integration — 4 (happy path with the job in real Redis, second completion, wrong ETag keeps the draft, size mismatch fails the video and removes the object); e2e — test/videos-complete-upload.e2e-spec.ts: 8 (all scenarios of `specs/videos-complete-upload.plan.md`)
+- **Observations:** a storage `InvalidPart`/`InvalidPartOrder`/`EntityTooSmall`/`NoSuchUpload` maps to `VIDEO_UPLOAD_INCOMPLETE` (verified against RustFS: a wrong ETag answers `InvalidPart`). Tests that read the queue call `queue.pause()` first so a `video-worker` container sharing the same Redis cannot consume the job before the assertion; they `obliterate` and `resume` afterwards.
+
+### SI-03.10 — Abort Upload
+- **Status:** completed
+- **Tests:** unit — videos.service.spec.ts `abortUpload`: 7; integration — 2 (draft and multipart removed; repeat → not found); e2e — test/videos-abort-upload.e2e-spec.ts: 5 (all scenarios of `specs/videos-abort-upload.plan.md`)
+- **Observations:** `NoSuchUpload` on the storage abort is tolerated (the draft is still removed); any other storage error keeps the draft so the client can retry.

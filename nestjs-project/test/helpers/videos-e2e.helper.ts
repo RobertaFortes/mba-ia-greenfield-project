@@ -131,3 +131,78 @@ export async function abortOpenUploads(ctx: VideosE2eContext): Promise<void> {
       .catch(() => undefined);
   }
 }
+
+export const MIB = 1024 * 1024;
+
+export interface StartedUpload {
+  id: string;
+  public_id: string;
+  status: string;
+  upload_id: string;
+  part_size_bytes: number;
+  total_parts: number;
+  parts: { part_number: number; url: string }[];
+}
+
+export interface UploadedPartRef {
+  part_number: number;
+  etag: string;
+}
+
+export const DEFAULT_UPLOAD = {
+  filename: 'clip.mp4',
+  content_type: 'video/mp4',
+  size_bytes: 11 * MIB,
+};
+
+/** POST /videos through the real endpoint. */
+export async function startUpload(
+  ctx: VideosE2eContext,
+  user: AuthenticatedUser,
+  body: Record<string, unknown> = DEFAULT_UPLOAD,
+): Promise<StartedUpload> {
+  const res = await request(ctx.app.getHttpServer())
+    .post('/videos')
+    .set('Authorization', `Bearer ${user.accessToken}`)
+    .send(body);
+  if (res.status !== 201) {
+    throw new Error(`POST /videos answered ${res.status}: ${res.text}`);
+  }
+  return res.body as StartedUpload;
+}
+
+/** PUTs bytes to a presigned part URL and returns the part ETag. */
+export async function putPart(url: string, size: number): Promise<string> {
+  const response = await fetch(url, {
+    method: 'PUT',
+    body: new Uint8Array(size),
+  });
+  if (response.status !== 200) {
+    throw new Error(`Part upload answered ${response.status}`);
+  }
+  return response.headers.get('etag') as string;
+}
+
+/** Sizes of each part for a file of `totalBytes` (last part is the remainder). */
+export function partSizes(upload: StartedUpload, totalBytes: number): number[] {
+  return Array.from({ length: upload.total_parts }, (_, index) =>
+    index < upload.total_parts - 1
+      ? upload.part_size_bytes
+      : totalBytes - index * upload.part_size_bytes,
+  );
+}
+
+export async function uploadAllParts(
+  upload: StartedUpload,
+  totalBytes = DEFAULT_UPLOAD.size_bytes,
+): Promise<UploadedPartRef[]> {
+  const sizes = partSizes(upload, totalBytes);
+  const refs: UploadedPartRef[] = [];
+  for (const part of upload.parts) {
+    refs.push({
+      part_number: part.part_number,
+      etag: await putPart(part.url, sizes[part.part_number - 1]),
+    });
+  }
+  return refs;
+}

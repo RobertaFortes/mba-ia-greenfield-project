@@ -76,3 +76,39 @@ export class VideoUnsupportedContentTypeException extends DomainException {
     );
   }
 }
+
+export class VideoInvalidStateException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_INVALID_STATE',
+      409,
+      'Video is not in a valid state for this operation',
+    );
+  }
+}
+
+export class VideoUploadIncompleteException extends DomainException {
+  constructor() {
+    super('VIDEO_UPLOAD_INCOMPLETE', 400, 'Upload is incomplete');
+  }
+}
+
+export class VideoSizeMismatchException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_SIZE_MISMATCH',
+      400,
+      'Uploaded file size does not match the declared size',
+    );
+  }
+}
+
+export class VideoQueueUnavailableException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_QUEUE_UNAVAILABLE',
+      503,
+      'Video processing queue is unavailable',
+    );
+  }
+}
