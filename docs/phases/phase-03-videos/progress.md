@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 17/18 completed
+**SIs:** 18/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -87,3 +87,8 @@
 - **Status:** completed
 - **Tests:** 4/4 passing — test/videos-pipeline.e2e-spec.ts: a real 11 MB MP4 uploaded in three parts → complete → `ready` (polling `GET /videos/:publicId/upload`) → metadata (10 s, 640x360) with a JPEG thumbnail → stream 302 + `Range` 206 with 100 bytes → download 302 with `attachment; filename="holiday.mp4"`; a non-video object ends `failed` with a `processing_error` (after the 3 attempts, ~16 s) and the public route answers 404; another user's upload session → `404 VIDEO_NOT_FOUND`; aborting a fresh draft removes the row and the multipart upload
 - **Observations:** deviation from the plan: the shared helper lives in `test/helpers/videos-e2e.helper.ts` (built across SI-03.7 to SI-03.16) instead of `test/support/upload-video.ts`. The processing module runs inside the test process (`bootstrapVideosApp({ withProcessing: true })`), so the suite does not depend on the `video-worker` container.
+
+### SI-03.18 — OpenAPI Export and AI Documentation
+- **Status:** completed
+- **Tests:** 12/12 passing in src/openapi-export.integration-spec.ts (3 new: the seven video operations are present, public routes have no security requirement while owner/download routes require `access-token`, request body fields of `InitUploadDto`/`CompleteUploadDto` are documented)
+- **Observations:** `openapi.json` regenerated with `npm run openapi:export` (only additions: the seven video operations and their schemas). `nestjs-project/CLAUDE.md` and the root `CLAUDE.md` now describe the `storage`/`redis`/`video-worker` services, the worker scripts, the required `S3_*` keys, the `S3_PUBLIC_ENDPOINT` exception and the test notes (queue consumer isolation, `queue.pause()`, `dist/` build caveat). `docs/diagrams/software-arch.mermaid` shows `BullMQ + Redis` and `RustFS (S3 API)` instead of `TBD` / `S3 or MinIO`.

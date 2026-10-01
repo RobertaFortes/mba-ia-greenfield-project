@@ -20,10 +20,10 @@ See `docs/diagrams/software-arch.mermaid` for the full diagram. Key containers:
 
 - **Frontend** (Next.js) → calls API via REST, streams from Object Storage
 - **API** (Nest.js) → business rules, auth, reads/writes DB, uploads to storage, publishes jobs to queue, sends emails
-- **Video Worker** (FFmpeg) → consumes jobs from queue, processes videos, updates DB and storage
+- **Video Worker** (FFmpeg, `nestjs-project/src/worker/`) → consumes jobs from queue, extracts duration/metadata and a thumbnail, updates DB and storage
 - **Database** (PostgreSQL) → users, channels, videos, comments, likes
-- **Object Storage** (S3/MinIO) → video files and thumbnails
-- **Message Queue** (TBD) → video processing job queue
+- **Object Storage** (RustFS, S3-compatible; MinIO community images are no longer published) → video files and thumbnails. Clients upload parts and stream directly with presigned URLs; the API never carries the bytes
+- **Message Queue** (BullMQ + Redis) → `video-processing` job queue; the API publishes (`jobId = videoId`), the Video Worker consumes
 - **Email Service** (SMTP) → account confirmation and password recovery
 
 ## Docker Networking
@@ -36,6 +36,8 @@ Inside a container, `localhost` refers to the container itself, not the host mac
 - **Wrong:** `DB_HOST=localhost`
 
 This applies to all environment variables, configuration files, and code that references service hosts.
+
+**Single exception — `S3_PUBLIC_ENDPOINT`:** it is a client-facing host (default `http://localhost:9000`) used only to sign the presigned URLs that browsers and players call, because a browser cannot resolve Compose service names and the host is part of the signature. Every service-to-service connection keeps `S3_ENDPOINT=http://storage:9000`. Tests that fetch presigned URLs from inside the container set `S3_PUBLIC_ENDPOINT=http://storage:9000`.
 
 ## Working Principles
 

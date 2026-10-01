@@ -13,6 +13,8 @@ docker compose ps   # all services must show status "running"
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **Redis:** `docker compose exec redis redis-cli ping` — expect `PONG`
+- **Object storage (RustFS):** `docker compose ps storage` — expect `running (healthy)`
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
 
@@ -34,6 +36,10 @@ docker compose exec nestjs-api npm run start:dev
 Services:
 - `nestjs-api` — NestJS API, port `3000`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `storage` — RustFS (`rustfs/rustfs:1.0.0`, S3-compatible; MinIO community images are no longer published), port `9000`, credentials from `S3_ACCESS_KEY`/`S3_SECRET_KEY`, volume `storage-data`
+- `redis` — Redis 7 with append-only persistence (`--appendonly yes`) for the BullMQ queue, volume `redis-data`
+- `video-worker` — same image and code as `nestjs-api`, runs `npm run start:worker:dev`: consumes the `video-processing` queue (FFmpeg/ffprobe are installed in `Dockerfile.dev`)
+- `mailpit` — SMTP sink for local email, ports `1025` / `8025`
 
 All verification and teardown commands run on the **host machine**:
 
@@ -62,6 +68,9 @@ docker compose down
 npm run start:dev                        # Dev server with hot-reload
 npm run build                            # Compile to dist/
 npm run start:prod                       # Run compiled build
+npm run start:worker                     # Run the compiled video-processing worker (node dist/worker/worker.main)
+npm run start:worker:dev                 # Worker in watch mode (what the video-worker service runs)
+npm run openapi:export                   # Regenerate openapi.json
 
 npm test                                 # Unit tests
 npm run test:watch                       # Unit tests in watch mode
@@ -92,6 +101,13 @@ docker compose exec nestjs-api npm run test:e2e   # already configured
 ```
 
 Parallel execution causes FK violations, deadlocks, and cross-suite contamination because suites truncate or seed shared tables concurrently.
+
+Storage, queue and worker notes for the videos suites:
+
+- The tests use the real Compose services (Postgres, Redis, RustFS) and real FFmpeg. Presigned URLs are fetched from inside the `nestjs-api` container, where `localhost:9000` is not the storage service, so suites use `S3_PUBLIC_ENDPOINT=http://storage:9000`: integration specs set the env var, e2e suites override the `storageConfig`/`videoConfig` providers through `bootstrapVideosApp` (`test/helpers/videos-e2e.helper.ts`), which also sets a 5 MiB part size.
+- `src/videos/processing/video.processor.integration-spec.ts` must be the only consumer of the `video-processing` queue: run `docker compose stop video-worker` before it, and `docker compose up -d video-worker` afterwards.
+- Specs that read the queue (`test/videos-complete-upload.e2e-spec.ts`, `test/videos-abort-upload.e2e-spec.ts`, `videos.service.integration-spec.ts`) call `queue.pause()` so a running `video-worker` cannot consume the job first.
+- `video-worker` and `start:dev` both build into `dist/` (`deleteOutDir`); do not run two watchers at the same time when you rely on `dist/`. For a one-off build check use `npx tsc -p tsconfig.build.json --outDir .tmp-dist` and delete the folder.
 
 During active development, run only the tests related to the file being changed (`npm test -- path/to/file.spec.ts`). Before declaring a task done, run the full suite — see the global `CLAUDE.md` → "Definition of Done (Technical)".
 
@@ -136,6 +152,10 @@ MAIL_FROM=StreamTube <noreply@streamtube.local>
 MAIL_FROM="StreamTube <noreply@streamtube.local>"
 ```
 
+Required keys without defaults: `DB_*`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `S3_ACCESS_KEY` and `S3_SECRET_KEY` (the app and the worker fail at boot without them). `.env.example` lists every key, including `S3_*`, `REDIS_*` and `VIDEO_*`.
+
+`S3_PUBLIC_ENDPOINT` (default `http://localhost:9000`) is the host baked into presigned URLs handed to clients; it is the only setting that points at `localhost` on purpose (see the root `CLAUDE.md`, Docker Networking). Service-to-service traffic uses `S3_ENDPOINT` (`http://storage:9000`).
+
 Whenever possible, prefer storing only the bare address in `.env` and composing display names in code (e.g., in `mail.config.ts`) so the file stays shell-safe.
 
 ## Build Assets
@@ -148,6 +168,11 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+- `src/storage/` — `StorageModule`/`StorageService`: S3 multipart, object operations and presigned URLs (two S3 clients: service endpoint and client-facing endpoint)
+- `src/videos/` — `VideosModule`: upload (`POST /videos`, `GET`/`DELETE /videos/:publicId/upload`, `POST /videos/:publicId/upload/complete`), public `GET /videos/:publicId`, `GET /videos/:publicId/stream` (302 to a presigned URL), authenticated `GET /videos/:publicId/download`; queue producer `VideoQueueService`
+- `src/videos/processing/` — `VideoProcessingModule`: `FfmpegService` (ffprobe/ffmpeg over `spawn`, reading the presigned URL), `VideoProcessingService`, `VideoProcessor` (BullMQ consumer)
+- `src/worker/` — `WorkerModule` + `worker.main.ts`: standalone application context that runs only the consumer (the API never consumes jobs)
+- Video lifecycle: `draft → processing → ready | failed`; `failed` is terminal. Public routes only see `ready` videos; every other state answers `404 VIDEO_NOT_FOUND`
 
 ## Code Conventions
 

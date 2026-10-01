@@ -128,4 +128,61 @@ describe('exportSpec (integration)', () => {
       }
     }
   });
+
+  it('lists the seven video operations', () => {
+    const paths = document.paths as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    const expected = [
+      ['/videos', 'post'],
+      ['/videos/{publicId}/upload', 'get'],
+      ['/videos/{publicId}/upload/complete', 'post'],
+      ['/videos/{publicId}/upload', 'delete'],
+      ['/videos/{publicId}', 'get'],
+      ['/videos/{publicId}/stream', 'get'],
+      ['/videos/{publicId}/download', 'get'],
+    ];
+
+    for (const [path, method] of expected) {
+      expect(paths[path]?.[method]).toBeDefined();
+    }
+  });
+
+  it('documents the public video routes without a security requirement and the owner routes with one', () => {
+    const paths = document.paths as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+
+    expect(paths['/videos/{publicId}'].get.security).toBeUndefined();
+    expect(paths['/videos/{publicId}/stream'].get.security).toBeUndefined();
+    for (const [path, method] of [
+      ['/videos', 'post'],
+      ['/videos/{publicId}/upload', 'get'],
+      ['/videos/{publicId}/upload/complete', 'post'],
+      ['/videos/{publicId}/upload', 'delete'],
+      ['/videos/{publicId}/download', 'get'],
+    ]) {
+      const security = paths[path][method].security as Array<
+        Record<string, unknown>
+      >;
+      expect(security.some((req) => 'access-token' in req)).toBe(true);
+    }
+  });
+
+  it('documents the video request body fields', () => {
+    const components = document.components as Record<string, unknown>;
+    const schemas = components.schemas as Record<
+      string,
+      { properties?: Record<string, unknown> }
+    >;
+
+    expect(Object.keys(schemas.InitUploadDto.properties ?? {})).toEqual(
+      expect.arrayContaining(['filename', 'content_type', 'size_bytes']),
+    );
+    expect(Object.keys(schemas.CompleteUploadDto.properties ?? {})).toContain(
+      'parts',
+    );
+  });
 });
