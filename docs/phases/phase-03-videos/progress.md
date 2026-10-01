@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 10/18 completed
+**SIs:** 11/18 completed
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
@@ -52,3 +52,8 @@
 - **Status:** completed
 - **Tests:** unit — videos.service.spec.ts `abortUpload`: 7; integration — 2 (draft and multipart removed; repeat → not found); e2e — test/videos-abort-upload.e2e-spec.ts: 5 (all scenarios of `specs/videos-abort-upload.plan.md`)
 - **Observations:** `NoSuchUpload` on the storage abort is tolerated (the draft is still removed); any other storage error keeps the draft so the client can retry.
+
+### SI-03.11 — FFmpeg Service: Probe and Thumbnail Extraction
+- **Status:** completed
+- **Tests:** 21/21 passing — probe-parser.util.spec.ts: 8; thumbnail-time.util.spec.ts: 7; ffmpeg.service.integration-spec.ts: 6 (real `ffprobe`/`ffmpeg` over a presigned URL served by real storage: 3 s video metadata, silent video, non-media file, audio-only → `NoVideoStreamError`, JPEG thumbnail capped at 1280 px from a 1920x1080 source, timeout kill)
+- **Observations:** `parseProbeOutput` also treats a "video" stream flagged `attached_pic` (cover art in audio files) as not a video stream. `ffprobe`/`ffmpeg` run through `child_process.spawn` with an argument array (no shell) and read the presigned URL directly with range reads, so nothing is downloaded. The timeout test points `ffprobe` at a local HTTP server that never answers and expects the rejection in under 5 s with a 1 s limit. `src/test/generate-test-video.ts` builds H.264/AAC MP4s from `lavfi` sources (the Debian `ffmpeg` in the image has `libx264`).
