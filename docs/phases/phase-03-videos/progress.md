@@ -1,7 +1,15 @@
 # phase-03-videos — Progress
 
-**Status:** in progress
+**Status:** completed
 **SIs:** 18/18 completed
+
+**Final verification (inside the containers, real Postgres/Redis/RustFS/FFmpeg):**
+- `npx tsc --noEmit` — exit 0
+- `npm test -- --runInBand` (unit + integration) — 42 suites, 309 tests passing
+- `npm run test:e2e` — 11 suites, 96 tests passing
+- `npm run build` — exit 0
+- `npm run lint` — still exit 1 with the same 190 problems (150 errors, 40 warnings) the clean `dev` baseline had, all in Phase 01/02 files (`auth`, `channels.service`, `common/filters`, `mail`, `users`, `test/create-test-data-source.ts`, `test/auth.e2e-spec.ts` and two old lines of `env.validation.integration-spec.ts`); the Phase 03 code (`src/videos`, `src/storage`, `src/worker`, `src/queue`, new tests and helpers) has zero lint findings. Cleaning the inherited `no-unsafe-*` errors is out of scope and should be its own task.
+- `video.processor.integration-spec.ts` was run with `video-worker` stopped (see CLAUDE.md).
 
 ### SI-03.1 — Dependencies, Configuration Namespaces and Environment Validation
 - **Status:** completed
